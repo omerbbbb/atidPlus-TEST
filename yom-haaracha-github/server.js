@@ -2523,16 +2523,36 @@ function buildSheetRows(cohortId) {
       const nFailed = db.prepare("SELECT COUNT(*) AS n FROM grading_items WHERE cohort_id=? AND code=? AND ai_status='failed' AND human_scores_json IS NULL").get(cohortId, gx.code).n;
       pendingReason = (tTot - tDone) + ' תשובות בלי ציון' + (nFailed ? ' · ' + nFailed + ' נכשלו ודורשות ציון ידני' : ' · טרם רצה בדיקת AI');
     }
+
+    // ★ ציון ידני דורס את המחושב. שדה שלא הוזן נשאר מחושב.
+    const man = gSafeParse(gx.manual_scores_json, null);
+    const manualFields = [];
+    let mFinal = roll.final_1to5, mRav = roll.teaching_t;
+    let mQuant = domains['כמותי'] != null ? domains['כמותי'] : null;
+    let mEng = domains['אנגלית'] != null ? domains['אנגלית'] : null;
+    if (man) {
+      if (man.final != null) { mFinal = man.final; manualFields.push('final'); }
+      if (man.ravMelel != null) { mRav = man.ravMelel; manualFields.push('ravMelel'); }
+      if (man.quant != null) { mQuant = man.quant; manualFields.push('quant'); }
+      if (man.english != null) { mEng = man.english; manualFields.push('english'); }
+    }
+    // ⚠ ציון סופי ידני מבטל את «טרם נבדק». אחרת הנבחנת תדולג בכל ייצוא ובכל
+    // שליחה למאנדיי — כלומר הציון שהוזן ידנית לא יגיע לשום מקום, וזו כל המטרה.
+    const isPending = (man && man.final != null) ? false : (tTot > tDone);
+    if (man && man.final != null) pendingReason = '';
+
     return {
       pendingReason: pendingReason,
+      manual: manualFields.length > 0, manualFields: manualFields,
+      // הערכים המחושבים נשמרים לצד הידניים — המסך מציג אותם בטולטיפ ומאפשר לחזור אליהם.
+      computed: { final: roll.final_1to5, ravMelel: roll.teaching_t,
+        quant: domains['כמותי'] != null ? domains['כמותי'] : null,
+        english: domains['אנגלית'] != null ? domains['אנגלית'] : null },
       code: gx.code, name: gx.name, day: dayLabel, cohortId: cohortId,
       include: !!gx.include_in_sheet, locked: !!gx.locked, partial: !!gx.partial,
-      teachTotal: tTot, teachGraded: tDone, pending: tTot > tDone,
+      teachTotal: tTot, teachGraded: tDone, pending: isPending,
       // ארבע העמודות שהוסכמו: ציון · רב-מלל · כמותי · אנגלית
-      final: roll.final_1to5,
-      ravMelel: roll.teaching_t,
-      quant: domains['כמותי'] != null ? domains['כמותי'] : null,
-      english: domains['אנגלית'] != null ? domains['אנגלית'] : null,
+      final: mFinal, ravMelel: mRav, quant: mQuant, english: mEng,
       bonus: roll.bonus || 0,
       bonusFrom: roll.bonus_from || '',
       // לפני שהבדיקה רצה מוצגים שמות המקצועות בלי ציונים — ציון רב-ברירה בלבד מטעה.
@@ -3126,6 +3146,38 @@ app.post('/api/examiner/grading/examinee-flags', authExaminer, (req, res) => {
   res.json({ ok: true, name: name });
 });
 
+// ציון ידני שדורס את המחושב.
+// ⚠ נדרש כשאותה נבחנת נרשמה פעמיים וחלק מהפרקים נענו תחת כל שם — אז שני
+// הציונים המחושבים שגויים ורק אדם יכול להכריע. כל דריסה נרשמת ב-audit.
+app.post('/api/examiner/grading/manual-score', authExaminer, (req, res) => {
+  const b = req.body || {};
+  const cohortId = Number(b.cohort_id);
+  const gx = db.prepare('SELECT * FROM grading_examinees WHERE cohort_id=? AND code=?').get(cohortId, String(b.code || ''));
+  if (!gx) return res.status(404).json({ error: 'לא נמצא.' });
+  const before = gSafeParse(gx.manual_scores_json, null);
+
+  if (b.clear) {
+    db.prepare('UPDATE grading_examinees SET manual_scores_json=NULL WHERE cohort_id=? AND code=?').run(cohortId, gx.code);
+    logGradeAudit(cohortId, gx.code, null, null, 'manual_score', JSON.stringify(before), 'ניקוי');
+    return res.json({ ok: true, cleared: true });
+  }
+
+  const FIELDS = ['final', 'ravMelel', 'quant', 'english'];
+  const out = {};
+  for (const f of FIELDS) {
+    const raw = (b.scores || {})[f];
+    if (raw == null || raw === '') continue;      // לא הוזן — נשאר מחושב
+    const n = Number(raw);
+    if (!isFinite(n) || n < 1 || n > 5) return res.status(400).json({ error: 'הציון של «' + f + '» חייב להיות בין 1 ל-5.' });
+    out[f] = Math.round(n * 10) / 10;             // עשירית אחת, כמו המחושב
+  }
+  if (!Object.keys(out).length) return res.status(400).json({ error: 'לא הוזן אף ציון.' });
+
+  db.prepare('UPDATE grading_examinees SET manual_scores_json=? WHERE cohort_id=? AND code=?').run(JSON.stringify(out), cohortId, gx.code);
+  logGradeAudit(cohortId, gx.code, null, null, 'manual_score', JSON.stringify(before), JSON.stringify(out));
+  res.json({ ok: true, manual: out });
+});
+
 app.post('/api/examiner/grading/recompute', authExaminer, (req, res) => {
   const cohortId = Number(req.body && req.body.cohort_id);
   const cohort = db.prepare('SELECT * FROM grading_cohorts WHERE id=?').get(cohortId);
@@ -3345,6 +3397,9 @@ function mondayPool(days) {
     buildSheetRows(id).forEach((r) => {
       const dayKey = id + '|' + (r.day || '');
       if (!want.has(dayKey)) return;
+      // ⚠ נבחנת שהוצאה מהגיליון לא נשלחת. זו הדרך לנטרל רשומה כפולה, וללא
+      // הסינון הזה היא הייתה ממשיכה להופיע כאן אחרי שהמשתמש הוציא אותה.
+      if (!r.include) return;
       pool.push(Object.assign({ cohort_id: id, key: id + ':' + r.code, day_key: dayKey }, r));
     });
   }
@@ -3359,6 +3414,7 @@ app.get('/api/examiner/monday/days', authExaminer, (req, res) => {
   for (const c of cohorts) {
     const byDay = {};
     buildSheetRows(c.id).forEach((r) => {
+      if (!r.include) return;   // אותו סינון כמו mondayPool — אחרת הספירה לא תתאים לנשלח
       const d = r.day || '(ללא יום)';
       if (!byDay[d]) byDay[d] = { total: 0, graded: 0 };
       byDay[d].total++;
@@ -3553,6 +3609,10 @@ app.use(function (req, res, next) {
 });
 app.use('/vendor/katex', express.static(path.join(__dirname, 'node_modules', 'katex', 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- בוחן ההוראה למועמדים ----------
+// מודול נפרד לגמרי: טבלאות משלו, כניסה משלו, ואפס נגיעה במנוע הסבבים.
+require('./lib/teachRoutes').register(app, { db, now, newToken, authExaminer });
 
 app.get('/examiner', (req, res) => res.sendFile(path.join(__dirname, 'public', 'examiner.html')));
 app.get('/grade', (req, res) => res.sendFile(path.join(__dirname, 'public', 'grade.html')));

@@ -71,6 +71,8 @@ window.AdminApp = (function () {
       '<button class="btn small" id="btn-excel" title="כל התשובות כאקסל">הורד תשובות (Excel)</button>' +
       '<button class="btn ghost small" id="btn-export" title="גיבוי JSON לבדיקת AI">JSON</button>' +
       '<button class="btn small" id="btn-grade" title="בדיקה, ציונים ודירוג (אחרי יום המבחן)">מסך בדיקה</button>' +
+      // בוחן ההוראה למועמדים — עולם נפרד (טבלאות, כניסה וגיליון משלו). קישור בלבד, לא כפתור מחווט.
+      '<a class="btn ghost small" href="/teach-grade" style="text-decoration:none" title="פיקוח ובדיקה של מועמדים להוראה — נפרד מיום ההערכה">מועמדים להוראה</a>' +
       '<button class="btn ghost small" id="btn-logout">יציאה</button></div>' +
       '<div id="render-err"></div>' +
       '<div id="ended-banner"></div>' +

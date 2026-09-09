@@ -269,9 +269,67 @@ CREATE TABLE IF NOT EXISTS grading_audit (
 );
 `);
 
+// ============================================================================
+//  בוחן ההוראה — מועמדים להוראה
+//  נפרד לחלוטין מיום ההערכה: טבלאות משלו, כניסה משלה וגיליון משלו.
+//  ⚠ במכוון אין כאן day_id ואין round — מועמד נבחן מתי שנוח לו, לבדו.
+// ============================================================================
+db.exec(`
+CREATE TABLE IF NOT EXISTS teach_candidates (
+  code             TEXT PRIMARY KEY,           -- מזהה פנימי
+  name             TEXT NOT NULL,
+  pin              TEXT NOT NULL,              -- הסיסמה שהמועמד בחר בכניסה הראשונה
+  phone            TEXT NOT NULL,
+  token            TEXT,                       -- אסימון session
+  subject_id       TEXT,                       -- המקצוע שנבחר (math5 / history / ...)
+  status           TEXT NOT NULL DEFAULT 'registered', -- registered | running | submitted
+  started_at       INTEGER,                    -- מתי נלחץ «התחל» (שעון השרת)
+  finished_at      INTEGER,
+  duration_sec     INTEGER NOT NULL DEFAULT 1500,
+  paused           INTEGER NOT NULL DEFAULT 0, -- המנהל עצר את השעון
+  paused_at        INTEGER,
+  paused_accum_sec INTEGER NOT NULL DEFAULT 0,
+  extra_sec        INTEGER NOT NULL DEFAULT 0, -- תוספת זמן שהמנהל העניק
+  created_at       INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS teach_answers (
+  code           TEXT NOT NULL,
+  qid            TEXT NOT NULL,               -- q1 / q2 / q3 / q4 / q5 / q6
+  value          TEXT,                        -- JSON: התשובה על כל חלקיה
+  started_at     INTEGER,                     -- מתי המסך הזה נפתח לראשונה
+  updated_at     INTEGER,
+  time_spent_sec INTEGER NOT NULL DEFAULT 0,  -- כמה זמן הוא באמת בילה בשאלה
+  PRIMARY KEY (code, qid),
+  FOREIGN KEY (code) REFERENCES teach_candidates(code) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teach_grades (
+  code        TEXT NOT NULL,
+  qid         TEXT NOT NULL,
+  scores_json TEXT,                           -- הציונים לפי הרוּבּריקה
+  comment     TEXT,                           -- נימוק הבודק (AI או אדם)
+  demo        INTEGER NOT NULL DEFAULT 0,     -- ⚠ ציון הדגמה: רץ בלי מפתח API
+  graded_at   INTEGER,
+  PRIMARY KEY (code, qid)
+);
+
+CREATE TABLE IF NOT EXISTS teach_events (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  code   TEXT,
+  kind   TEXT NOT NULL,                       -- login | start | question | submit | admin
+  detail TEXT,
+  at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_teach_events_code ON teach_events(code, at);
+`);
+
 // מיגרציה שנייה — עמודות על טבלאות שנוצרות למעלה (days / grading_cohorts).
 // ⚠ חייבת לרוץ *אחרי* יצירתן, אחרת ה-ALTER נכשל בשקט והעמודה לא נוספת.
 for (const alter of [
+  // ⚠ «מצב בדיקה»: המנהל עובר על המבחן בעצמו כדי לאתר טעויות תוכן.
+  //   השעון קפוא, אין הגשה אוטומטית, והמועמד לא נספר כמועמד אמיתי.
+  'ALTER TABLE teach_candidates ADD COLUMN review INTEGER NOT NULL DEFAULT 0',
   // «המבחן הסתיים» הוא מצב של *יום* מסוים, לא של המערכת כולה.
   'ALTER TABLE days ADD COLUMN exam_ended INTEGER NOT NULL DEFAULT 0',
   // ההודעה שהנבחן רואה במסך הסיום — המנהל עורך אותה בעצמו.
@@ -286,6 +344,10 @@ for (const alter of [
   'ALTER TABLE grading_rollups ADD COLUMN bonus_from TEXT',
   'ALTER TABLE grading_rollups ADD COLUMN criteria_json TEXT',
   'ALTER TABLE grading_rollups ADD COLUMN subjects_json TEXT',
+  // ⚠ ציון ידני שדורס את המחושב. נדרש כשאותה נבחנת נרשמה פעמיים (חלק מהפרקים
+  // תחת שם אחד וחלק תחת שם אחר) — אז *שני* הציונים המחושבים שגויים, כי כל אחד
+  // מבוסס על נתונים חלקיים, ורק אדם יכול להכריע מה הציון הנכון.
+  'ALTER TABLE grading_examinees ADD COLUMN manual_scores_json TEXT',
   // שעון הסבב — מקור אמת אחד לשלושת המסכים (מנהל · מראיין · נבחן שהגיש).
   // `started_at` כבר קיים בטבלה; חסרו המשך וההשהיה, במקביל למה שיש ב-slots.
   'ALTER TABLE day_rounds ADD COLUMN duration_sec INTEGER',
