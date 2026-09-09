@@ -1,0 +1,157 @@
+{
+  "subject_id": "english",
+  "name": "אנגלית",
+  "order": 4,
+  "exam": "English 5 units — Module G (016582), Summer 2019, Reading Comprehension",
+  "topic": "Inferring — what paragraph IV actually supports, versus what merely sounds right",
+  "q1": {
+    "brief_he": "שאלת הבגרות: קרא את הקטע וענה על שאלות 1–7 (Access to Information). תלמיד ענה על השאלות, ולפניך תשובותיו בסדר השאלות.",
+    "brief_kind": "source",
+    "brief_ltr": true,
+    "brief_label": "REMEMBER WHEN…? — key sentences from the article (Module G, summer 2019)",
+    "brief_body": "I — Most of us don't have any memories from the first three to four years of our lives. Even the early memories we think we have may not be the real thing, but merely recollections we formed much later based on photos and on stories. Scientists are still trying to gain an understanding of it.  II — Six-month-old babies who learned to make a toy train run remembered what to do three weeks later; two-year-olds could recall the action for more than a month. All these early memories, however, fade after a few months at most.  III — The formation of long-lasting memories is linked to physical changes in the brain during childhood. One outcome is the development of verbal capabilities. A child's ability to speak about an event at the time it happens can predict how well that event is remembered.  IV — But even before the brain develops its full memory function, parents can help very young children form rich memories. The best way is to engage them in conversation about past events. For instance, a father can talk to his five-year-old daughter about her last birthday party, asking her simple questions and adding extra information after each of her answers. Children in families where stories are told and retold in this manner develop stronger and more detailed memories of their lives in the past.",
+    "steps_label": "התשובות של התלמיד לשאלות 1–7",
+    "steps_ltr": true,
+    "steps": [
+      "Q1 — What do we learn from paragraph I about our early memories? → (iv) Why they might not be accurate.",
+      "Q2 — The scientists want to find out why it is usually impossible to… → remember events from the first three to four years of our lives.",
+      "Q3 — What did the researchers find out about the two groups? → (ii) How long each group remembered a certain action.",
+      "Q4 — Sequence in paragraph III: (1) Physical changes occur in the brain during childhood. (3) This seems to predict how well an event is remembered.",
+      "Q6 — What can we infer from paragraph IV? → (ii) Happy events are the easiest for children to remember.",
+      "Q7 — How might the daughter benefit from the conversation? → She might be able to remember happy events, like her party, better than sad ones."
+    ],
+    "broken_step": 5,
+    "ans_type": "text",
+    "ans_label": "מה היה צריך להיכתב בשלב הזה:",
+    "ans_note": "האפשרות הנכונה + המילים בטקסט שמחייבות אותה",
+    "hint": "חמש מתוך שש התשובות נכונות. אחת «נשמעת הגיונית» — ואין בטקסט מילה אחת שמחייבת אותה.",
+    "key_fix": "Q6 → (iii) Memory function is not fully developed at the age of five. The anchoring words are in the text: «even BEFORE the brain develops its FULL memory function» — and the example child is five. Nothing in paragraph IV says anything about happy versus sad events; the birthday party is an example of a conversation, not a claim about which events are remembered. Step 6 follows from the error — the correct Q7 answer, straight from the text: «develop stronger and more detailed memories of her life in the past».",
+    "key_fix_ltr": true
+  },
+  "q2_key": {
+    "strong": "«He filled the gap with what sounds true instead of with the text. The party is just the example of a conversation — mark me the words that say ‹happy events›. There are none. Now mark ‹before the brain develops its full memory function› — that's the answer.»",
+    "weak": "«התשובה שלו לא בטקסט, צריך להישאר בטקסט.» — נכון, ולא נותן לו דרך לדעת *איך* יודעים שיצא מהטקסט."
+  },
+  "q3": {
+    "profile": "רותם · כיתה יא׳, אנגלית 5 יחידות. קוראת שוטף. בשיעור אתמול היא שאלה: «In an inference question, how do I know if my answer is really in the text or just makes sense?» — ולא קיבלה תשובה.",
+    "ai": "An inference question asks you to read between the lines: the answer is not stated directly, so you must combine clues from the passage. Read the paragraph carefully, underline the key words, and pay attention to signal words such as then, because and but. Then choose the option that best fits the paragraph as a whole, and write your answer in your own words without copying a sentence from the text.",
+    "ai_ltr": true,
+    "key_drop": "את ההסבר על מה זה inference ואיך קוראים בעיון. רותם קוראת מצוין — היא שאלה איך *לבדוק* תשובה, לא איך לקרוא.",
+    "key_open": "בשאלה שלה, ואז במרקר: for the option you chose, mark the words in the text that force it. If there is nothing to mark — it only ‹sounds right›.",
+    "key_close": "«No words to mark — no answer.» חוק אחד, ואפשר להריץ אותו לבד בבגרות."
+  },
+  "q4": {
+    "stem": "שיעור ראשון בנושא שאלות הסקה (Inferring) — על הקטע Remember When…? מבגרות Module G. 45 דקות, כיתת אנגלית 5 יחידות, 28 תלמידים ברמות שונות.",
+    "plans": [
+      {
+        "id": "a",
+        "name": "מערך א׳ · מהכלל אל הטקסט",
+        "beats": [
+          [
+            "0–5",
+            "ההבדל בין stated ל־implied, עם שתי דוגמאות של שורה אחת."
+          ],
+          [
+            "5–18",
+            "המורה מדגים על פסקה אחת: מסמן את המילים שמחייבות את התשובה, ואז מנסח בלי להשתמש בהן."
+          ],
+          [
+            "18–28",
+            "דוגמה נגדית: תשובה שנשמעת מושלמת ואין לה עוגן בטקסט. הכיתה מחפשת את העוגן ולא מוצאת."
+          ],
+          [
+            "28–42",
+            "תרגול: שתי פסקאות, שלוש שאלות כל אחת."
+          ],
+          [
+            "42–45",
+            "סיכום: שני צעדים בכרטיסייה — סמן, ואז נסח מחדש."
+          ]
+        ],
+        "key_pro": "שני הצעדים — לסמן ואז לנסח מחדש — מודגמים במלואם, כולל הדוגמה הנגדית של תשובה מושלמת בלי עוגן.",
+        "key_con": "ההדגמה נעשית על ידי המורה. מי שממציא תשובות הגיוניות לא נתפס בשיעור הזה, כי לא נדרש להציע אף תשובה משלו."
+      },
+      {
+        "id": "b",
+        "name": "מערך ב׳ · ארבע תשובות לאותה שאלה",
+        "beats": [
+          [
+            "0–10",
+            "פסקה אחת ולידה ארבע תשובות: אחת מדויקת, אחת העתקה, אחת הגיונית אבל לא בטקסט, ואחת שגויה. «דרגו»."
+          ],
+          [
+            "10–20",
+            "הכיתה נחלקת בדיוק בין המדויקת ל«הגיונית אבל לא בטקסט». המחלוקת נשארת פתוחה."
+          ],
+          [
+            "20–30",
+            "מכריעים בכלי אחד: מי שטוען משהו — יסמן במרקר את המילים בטקסט שמחייבות אותו. אצל אחת אין מה לסמן."
+          ],
+          [
+            "30–42",
+            "תרגול מדורג בשלוש רמות."
+          ],
+          [
+            "42–45",
+            "חוזרים לארבע התשובות. מי שבחר בהגיונית מסביר עכשיו בעצמו למה היא נפלה."
+          ]
+        ],
+        "key_pro": "הכיתה נחלקת בדיוק בין המדויקת ל«הגיונית אבל לא בטקסט», והמרקר מכריע. זו הטעות שהמבחן צד, והיא נחשפת מבפנים.",
+        "key_con": "שלושים דקות סביב פסקה אחת. חלשים באוצר מילים יתקשו כבר בדירוג, ולפני שהגיעו לעיקר."
+      },
+      {
+        "id": "c",
+        "name": "מערך ג׳ · תשע שאלות מהדקה הראשונה",
+        "beats": [
+          [
+            "0–3",
+            "שני הצעדים על הלוח, בלי הדגמה."
+          ],
+          [
+            "3–33",
+            "שלוש פסקאות, תשע שאלות הסקה בסדר עולה. המורה מסתובב כל השיעור."
+          ],
+          [
+            "—",
+            "בצד הלוח: ליד כל שאלה מספר התלמידים שנתקעו בה."
+          ],
+          [
+            "33–45",
+            "פותרים בכיתה רק את שתיים־שלוש השאלות שהכי הרבה נתקעו בהן."
+          ]
+        ],
+        "key_pro": "תשע שאלות הסקה בשיעור, ומפה של אילו סוגי שאלות מפילים את הכיתה.",
+        "key_con": "שני הצעדים על הלוח בלי הדגמה. מי שעונה לפי היגיון יתרגל שלושים דקות לענות לפי היגיון — ולפעמים אפילו לצדוק."
+      }
+    ]
+  },
+  "q6": {
+    "stem": "On question 6 of the same exam, a student chose the correct answer — (iii) Memory function is not fully developed at the age of five. שאלת אותה איך היא ידעה, והיא ענתה: «כי (iii) הייתה הכי ארוכה והכי ‹מדעית›, ובשאלות infer זה תמיד הנכונה».",
+    "opts": [
+      {
+        "id": "a",
+        "text": "מאשר ועובר הלאה. התשובה נכונה.",
+        "verdict": "fall"
+      },
+      {
+        "id": "b",
+        "text": "מבקש ממנה לסמן במרקר את המילים בטקסט שמחייבות את התשובה שלה.",
+        "verdict": "good"
+      },
+      {
+        "id": "c",
+        "text": "מסביר לה שוב את ההבדל בין stated ל־implied.",
+        "verdict": "weak"
+      },
+      {
+        "id": "d",
+        "text": "נותן לה פסקה שבה התשובה ההגיונית היא בדיוק הלא נכונה, ומחכה לראות מה יקרה.",
+        "verdict": "good"
+      }
+    ],
+    "key_must": "שהיא צדקה בלי עוגן בטקסט — הפעם הכלל ‹הארוכה והמדעית› התאים, ובפעם הבאה הוא ייבנה נגדה. ומה יעשה אם היא תסמן במרקר את המשפט הלא נכון."
+  },
+  "check": "«Let's check. Mark me the words in paragraph IV that force your answer.»",
+  "check_reply": "היא עוברת על הפסקה שוב ועוצרת. «There's nothing about happy events. Only ‹before the brain develops its full memory function›.» — ולראשונה בשיעור היא מחזיקה מרקר.",
+  "syllabus": "Official bagrut: English Module G, questionnaire 016582, summer 2019 (קיץ תשע״ט), Version A, Part I «Access to Information from Written Texts», questions 1–7 on the article «Remember When…?». Question 6 is an explicit Inferring item — a named Higher Order Thinking Skill in the English Inspectorate's program."
+}
