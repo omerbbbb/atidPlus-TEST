@@ -32,12 +32,14 @@ function load() {
 function reload() { cache = null; return load(); }
 
 function listSubjects() {
-  return load().subjects.map(s => ({ id: s.subject_id, name: s.name, topic: s.topic, exam: s.exam }));
+  return load().subjects.map(s => ({ id: s.subject_id, name: s.name, topic: s.topic, exam: s.exam, aids: s.aids || '' }));
 }
 
 function getSubject(id) {
   return load().subjects.find(s => s.subject_id === id) || null;
 }
+
+function instructions() { return load().shared.instructions || null; }
 
 function durationSec() {
   return Number(load().shared.duration_sec) || 1500;
@@ -176,7 +178,115 @@ function health() {
   return { ok: problems.length === 0, subjects: subjects.length, problems };
 }
 
+// ---------------------------------------------------------------------------
+// מודל הניקוד: מה אוטומטי, מה לפי רובריקה, וכמה שווה כל שאלה (סה"כ 24).
+// ---------------------------------------------------------------------------
+function scoringModel() {
+  const sh = load().shared;
+  return { scoring: sh.exam_scoring || {}, labels: sh.rubric_labels || {} };
+}
+
+function simMoveScore(shared, subj, path) {
+  const tree = buildSim(shared, subj, true);
+  if (!Array.isArray(path) || !path.length) return { pts: [], total: 0 };
+  const pts = [];
+  const o1 = tree.t1.opts.find(o => o.id === path[0].id); pts.push(o1 ? (o1.score || 0) : 0);
+  if (path[1]) { const n2 = tree.t2[path[0].to] || { opts: [] }; const o2 = n2.opts.find(o => o.id === path[1].id); pts.push(o2 ? (o2.score || 0) : 0); }
+  if (path[2]) { const n3 = tree.t3[path[1].to] || tree.t3.stuck; const o3 = n3.opts.find(o => o.id === path[2].id); pts.push(o3 ? (o3.score || 0) : 0); }
+  return { pts, total: pts.reduce((a, b) => a + b, 0) };
+}
+
+// answers = { qid: {value, time_spent_sec} } · grades = { qid: {scores:{crit:0|1}, comment} }
+// מחזיר לכל שאלה: auto (חלקים אוטומטיים), rubric (סימוני הבודק), points, max — וסה"כ.
+function computeScore(subjectId, answers, grades) {
+  const { shared } = load();
+  const subj = getSubject(subjectId);
+  const model = (shared.exam_scoring || {});
+  const out = { questions: {}, total: 0, max: model.total || 24, complete: true };
+  if (!subj) return out;
+  const g = grades || {};
+  const a = answers || {};
+  const val = q => (a[q] && a[q].value) || {};
+
+  for (const qid of ['q1', 'q2', 'q3', 'q4', 'q5', 'q6']) {
+    const m = model[qid] || {}; const row = { auto: {}, rubric: {}, points: 0, max: m.max || 0, label: m.label || qid };
+    // --- חלקים אוטומטיים ---
+    if (qid === 'q1') {
+      const chk = checkQ1(subjectId, val('q1'));
+      row.auto.step = chk.step_ok ? 1 : 0;
+      if (subj.q1.ans_type === 'num') row.auto.fix = chk.ans_ok ? 1 : 0;
+      else {                                            // תיקון מילולי — הבודק מסמן
+        const gs = (g.q1 && g.q1.scores) || {};
+        if (gs.fix_correct == null) row.complete = false;
+        row.auto.fix = gs.fix_correct ? 1 : 0;
+      }
+    }
+    if (qid === 'q5') {
+      const mv = simMoveScore(shared, subj, val('q5').path);
+      row.auto.moves = mv.total; row.auto.moves_pts = mv.pts;
+    }
+    if (qid === 'q6') {
+      const pick = val('q6').pick;
+      const opt = (subj.q6.opts || []).find(o => o.id === pick);
+      row.auto.pick = opt ? (opt.verdict === 'good' ? 2 : opt.verdict === 'weak' ? 1 : 0) : 0;
+    }
+    // --- רובריקה (הבודק) ---
+    let rub = 0;
+    for (const c of (m.rubric || [])) {
+      const gs = (g[qid] && g[qid].scores) || {};
+      if (gs[c] == null) { row.complete = false; row.rubric[c] = null; }
+      else { row.rubric[c] = gs[c] ? 1 : 0; rub += gs[c] ? 1 : 0; }
+    }
+    row.points = Object.keys(row.auto).filter(k => k !== 'moves_pts').reduce((s, k) => s + (row.auto[k] || 0), 0) + rub;
+    row.points = Math.min(row.points, row.max);
+    if (row.complete === false) out.complete = false;
+    out.questions[qid] = row;
+    out.total += row.points;
+  }
+  return out;
+}
+
+// טקסט לבודק ה-AI: השאלה, המפתח וההקשר לכל שאלה כתובה.
+function aiPackFor(subjectId, answers) {
+  const { shared } = load();
+  const s = getSubject(subjectId);
+  if (!s) return [];
+  const k = keyFor(subjectId);
+  const L = shared.rubric_labels || {};
+  const a = answers || {};
+  const txt = q => ((a[q] && a[q].value && a[q].value.text) || '');
+  const steps = (s.q1.steps || []).map((t, i) => (i + 1) + '. ' + t.replace(/\\\(|\\\)|\\\[|\\\]/g, '')).join('\n');
+  const list = [];
+  if (s.q1.ans_type === 'text') list.push({
+    qid: 'q1', subject: s.name, criteria: ['fix_correct'], labels: L,
+    question: 'סמן את השלב שבו התשובה נשברת, וכתוב מה היה צריך להיכתב שם.',
+    context: 'תשובת התלמיד בשלבים:\n' + steps,
+    key: 'השלב השבור: ' + s.q1.broken_step + '. התיקון הנכון: ' + k.q1.fix,
+    answer: txt('q1') });
+  list.push({ qid: 'q2', subject: s.name, criteria: shared.q2.rubric, labels: L,
+    question: shared.q2.ask, context: 'תשובת התלמיד בשלבים:\n' + steps + '\nהשלב השבור: ' + s.q1.broken_step,
+    key: 'תשובה חזקה: ' + k.q2.strong + '\nתשובה חלשה (דגל): ' + k.q2.weak, answer: txt('q2') });
+  list.push({ qid: 'q3', subject: s.name, criteria: shared.q3_rubric, labels: L,
+    question: shared.q3_ask, context: 'התלמידה: ' + s.q3.profile + '\nההסבר של ה-AI: ' + s.q3.ai,
+    key: 'מה מורידים: ' + k.q3.drop + '\nבמה פותחים: ' + k.q3.open + '\nבאיזה משפט מסיימים: ' + k.q3.close, answer: txt('q3') });
+  const plan = (a.q4 && a.q4.value && a.q4.value.plan) || null;
+  list.push({ qid: 'q4', subject: s.name, criteria: shared.q4_rubric, labels: L,
+    question: shared.q4_ask + (plan ? (' (בחר במערך ' + plan + ')') : ''), context: s.q4.stem,
+    key: k.q4.map(p => p.name + ' — יתרון: ' + p.pro + ' · מחיר: ' + p.con).join('\n'), answer: txt('q4') });
+  const path = (a.q5 && a.q5.value && a.q5.value.path) || [];
+  list.push({ qid: 'q5', subject: s.name, criteria: shared.sim.rubric, labels: L,
+    question: shared.sim.reflect_ask,
+    context: 'מסלול השיחה שהמועמד בחר:\n' + path.map((t, i) => 'מהלך ' + (i + 1) + ': ' + t.label + ' → ' + t.reply).join('\n'),
+    key: (shared.sim_key || []).map(x => x.look + ': ' + x.good + ' | דגל: ' + x.flag).join('\n'), answer: txt('q5') });
+  const pick = (a.q6 && a.q6.value && a.q6.value.pick) || null;
+  list.push({ qid: 'q6', subject: s.name, criteria: shared.q6_rubric, labels: L,
+    question: shared.q6_ask + (pick ? (' (בחר באפשרות ' + pick + ')') : ''), context: s.q6.stem,
+    key: 'הנימוק חייב לכלול: ' + k.q6.must, answer: txt('q6') });
+  return list;
+}
+
 module.exports = {
   load, reload, listSubjects, getSubject, durationSec,
-  buildForCandidate, keyFor, checkQ1, health
+  buildForCandidate, keyFor, checkQ1, health,
+  scoringModel, computeScore, aiPackFor, instructions
 };

@@ -117,4 +117,19 @@ async function setValues(boardId, itemId, values, cfg) {
   return true;
 }
 
-module.exports = { loadConfig, hasToken, gql, testToken, listBoards, boardColumns, boardItems, columnValue, setValues };
+// יצירת פריט חדש בבורד (לבוחן ההוראה — המועמד לא קיים בבורד מראש).
+// group_id אופציונלי; בלעדיו הפריט נכנס לקבוצה הראשונה.
+async function createItem(boardId, name, values, groupId, cfg) {
+  const vars = { board: String(boardId), name: String(name).slice(0, 255), vals: JSON.stringify(values || {}) };
+  let q;
+  if (groupId) {
+    vars.group = String(groupId);
+    q = 'mutation($board:ID!, $group:String!, $name:String!, $vals:JSON!){ create_item(board_id:$board, group_id:$group, item_name:$name, column_values:$vals){ id } }';
+  } else {
+    q = 'mutation($board:ID!, $name:String!, $vals:JSON!){ create_item(board_id:$board, item_name:$name, column_values:$vals){ id } }';
+  }
+  const d = await gql(q, vars, cfg);
+  return d.create_item ? String(d.create_item.id) : null;
+}
+
+module.exports = { loadConfig, hasToken, gql, testToken, listBoards, boardColumns, boardItems, columnValue, setValues, createItem };

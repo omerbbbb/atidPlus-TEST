@@ -330,6 +330,19 @@ for (const alter of [
   // ⚠ «מצב בדיקה»: המנהל עובר על המבחן בעצמו כדי לאתר טעויות תוכן.
   //   השעון קפוא, אין הגשה אוטומטית, והמועמד לא נספר כמועמד אמיתי.
   'ALTER TABLE teach_candidates ADD COLUMN review INTEGER NOT NULL DEFAULT 0',
+  // ציון סופי, בדיקת AI ושליחה למאנדיי — לבוחן ההוראה
+  'ALTER TABLE teach_candidates ADD COLUMN total_score REAL',
+  'ALTER TABLE teach_candidates ADD COLUMN graded_at INTEGER',
+  'ALTER TABLE teach_candidates ADD COLUMN monday_board_id TEXT',
+  'ALTER TABLE teach_candidates ADD COLUMN monday_item_id TEXT',
+  'ALTER TABLE teach_candidates ADD COLUMN monday_sent_at INTEGER',
+  'ALTER TABLE teach_candidates ADD COLUMN monday_item_name TEXT',
+  // שאלות שהמנהל פתח מחדש לעריכה (JSON של מזהי שאלות)
+  'ALTER TABLE teach_candidates ADD COLUMN reopened_json TEXT',
+  // השאלה הרחוקה ביותר שהמועמד הגיע אליה (0..5) — כדי שרענון לא יפתח שאלה נעולה לעריכה
+  'ALTER TABLE teach_candidates ADD COLUMN reached INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE teach_grades ADD COLUMN ai_json TEXT',
+  'ALTER TABLE teach_grades ADD COLUMN source TEXT',
   // «המבחן הסתיים» הוא מצב של *יום* מסוים, לא של המערכת כולה.
   'ALTER TABLE days ADD COLUMN exam_ended INTEGER NOT NULL DEFAULT 0',
   // ההודעה שהנבחן רואה במסך הסיום — המנהל עורך אותה בעצמו.

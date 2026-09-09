@@ -28,7 +28,7 @@
       body: data ? JSON.stringify(data) : undefined
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
-        if (!r.ok) throw new Error(j.error || 'שגיאת שרת');
+        if (!r.ok) { var e = new Error(j.error || 'שגיאת שרת'); e.status = r.status; e.data = j; throw e; }
         return j;
       });
     });
@@ -98,7 +98,7 @@
     var rows = (S.list && S.list.candidates) || [];
     if (!rows.length) return reviewBar() + '<div class="g-empty">עדיין לא נכנס אף מועמד.<br />הקישור למועמדים: <b>/teach</b></div>';
     return reviewBar() + '<table class="g-table"><thead><tr>' +
-      '<th>שם</th><th>טלפון</th><th>מקצוע</th><th>מצב</th><th>ענה</th><th>נשאר</th><th>פעולות</th>' +
+      '<th>שם</th><th>טלפון</th><th>מקצוע</th><th>מצב</th><th>ענה</th><th>נשאר</th><th>ציון</th><th>מאנדיי</th><th>פעולות</th>' +
       '</tr></thead><tbody>' +
       rows.map(function (c) {
         return '<tr class="clickable" data-open="' + esc(c.code) + '">' +
@@ -109,12 +109,17 @@
           '<td class="g-num">' + c.answered + ' / ' + c.total + '</td>' +
           '<td class="g-num">' + (c.status === 'running' ? mins(c.remaining_sec) : '—') +
             (c.extra_sec ? ' <span class="g-pill mid">+' + Math.round(c.extra_sec / 60) + '</span>' : '') + '</td>' +
+          '<td class="g-num">' + (c.total_score != null ? ('<b>' + c.total_score + '</b> / 24') : (c.status === 'submitted' ? '<span class="g-pill mid">לבדיקה</span>' : '—')) + '</td>' +
+          '<td>' + (c.monday_item_id ? '<span class="g-pill good">נשלח</span>' : '—') + '</td>' +
           '<td><div class="g-act">' +
             (c.status === 'running'
               ? '<button class="g-btn" data-act="pause" data-c="' + esc(c.code) + '">' + (c.paused ? 'המשך' : 'השהה') + '</button>' +
                 '<button class="g-btn" data-act="extra" data-c="' + esc(c.code) + '">+5 דק׳</button>'
               : '') +
+            (c.status === 'running' ? '<button class="g-btn" data-act="finish" data-c="' + esc(c.code) + '" title="מה שנשמר עד עכשיו הוא התשובה">סיים</button>' : '') +
+            (c.status === 'submitted' ? '<button class="g-btn" data-act="reopen" data-c="' + esc(c.code) + '" title="חוזר למצב מבחן, +5 דק׳, כל התשובות נשמרות">פתח מחדש</button>' : '') +
             '<button class="g-btn danger" data-act="reset" data-c="' + esc(c.code) + '">איפוס</button>' +
+            '<button class="g-btn danger" data-act="delete" data-c="' + esc(c.code) + '">מחק</button>' +
           '</div></td></tr>';
       }).join('') + '</tbody></table>';
   }
@@ -133,9 +138,11 @@
         e.stopPropagation();
         var act = b.getAttribute('data-act'), code = b.getAttribute('data-c');
         if (act === 'reset' && !confirm('לאפס את המבחן של המועמד? כל התשובות יימחקו ואי אפשר לשחזר.')) return;
-        var url = act === 'pause' ? '/api/examiner/teach/pause'
-          : act === 'extra' ? '/api/examiner/teach/extra-time' : '/api/examiner/teach/reset';
-        api(url, act === 'extra' ? { code: code, minutes: 5 } : { code: code }).then(refresh);
+        if (act === 'delete' && !confirm('למחוק את המועמד לגמרי, כולל התשובות והציונים? אי אפשר לשחזר.')) return;
+        if (act === 'finish' && !confirm('לסיים את המבחן עכשיו? מה שנשמר עד כה ייחשב כתשובה.')) return;
+        var url = { pause: '/api/examiner/teach/pause', extra: '/api/examiner/teach/extra-time', reset: '/api/examiner/teach/reset',
+                    'delete': '/api/examiner/teach/delete', finish: '/api/examiner/teach/force-submit', reopen: '/api/examiner/teach/reopen' }[act];
+        api(url, act === 'extra' ? { code: code, minutes: 5 } : { code: code }).then(refresh).catch(function (e) { alert(e.message); });
       };
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-open]'), function (tr) {
@@ -144,9 +151,11 @@
   }
 
   // ------------------------------------------------------------- כרטיס מועמד
-  function openCard(code) {
+  // after — הודעה שמוצגת *אחרי* הרינדור (הודעה שנכתבת לפני openCard נמחקת ברינדור מחדש)
+  function openCard(code, after) {
     api('/api/examiner/teach/candidate/' + encodeURIComponent(code)).then(function (r) {
       S.card = r; S.open = code; render();
+      if (typeof after === 'function') after();
     });
   }
 
@@ -176,7 +185,7 @@
   }
 
   function qBlock(id, name, timeSec, inner) {
-    return '<div class="g-qblock"><div class="g-qhead">' +
+    return '<div class="g-qblock" data-q="' + esc(id) + '"><div class="g-qhead">' +
              '<span class="qid">' + esc(id.toUpperCase()) + '</span>' +
              '<span class="qname">' + esc(name) + '</span>' +
              '<span class="qtime">' + (timeSec != null ? mins(timeSec) : '—') + '</span>' +
@@ -295,6 +304,254 @@
 
     out += '</div></div>';
     return out;
+  }
+
+  // ------------------------------------------------------------- בדיקה: רובריקה, AI, ציון, מאנדיי
+  var saveT = {};
+  function autoLabel(qid, k, v, q) {
+    if (qid === 'q1' && k === 'step') return 'זיהה את השלב השבור · ' + v + '/1';
+    if (qid === 'q1' && k === 'fix')  return 'התיקון · ' + v + '/1' + (q.rubric.fix_correct === undefined ? ' (אוטומטי)' : '');
+    if (qid === 'q5' && k === 'moves') return 'מהלכי השיחה · ' + v + '/6 (אוטומטי)';
+    if (qid === 'q6' && k === 'pick')  return 'הבחירה · ' + v + '/2 (אוטומטי)';
+    return k + ' · ' + v;
+  }
+  function gradingHtml(qid) {
+    var d = S.card, sc = d.score && d.score.questions[qid], model = (d.scoring && d.scoring.scoring[qid]) || {};
+    var labels = (d.scoring && d.scoring.labels) || {};
+    var g = (d.grades && d.grades[qid]) || { scores: {}, comment: '' };
+    var ai = g.ai || null;
+    if (!sc) return '';
+    var h = '<div class="g-grade">' +
+      '<div class="g-grade-h"><span>בדיקה</span><b class="g-qpts" data-pts="' + qid + '">' + sc.points + ' / ' + sc.max + '</b></div>';
+    // חלקים אוטומטיים
+    var autos = Object.keys(sc.auto).filter(function (k) { return k !== 'moves_pts'; });
+    if (autos.length) h += '<div class="g-autos">' + autos.map(function (k) {
+      if (qid === 'q1' && k === 'fix' && (model.rubric || []).length === 0 && sc.rubric.fix_correct === undefined && d.key.q1.ans_type !== 'num') return '';
+      if (qid === 'q1' && k === 'fix' && d.key.q1.ans_type !== 'num') return '';   // מסומן ברובריקה למטה
+      return '<span class="g-pill ' + (sc.auto[k] > 0 ? 'good' : 'bad') + '">' + esc(autoLabel(qid, k, sc.auto[k], sc)) + '</span>';
+    }).join(' ') + '</div>';
+    // רובריקה
+    var crits = (model.rubric || []).slice();
+    if (qid === 'q1' && d.key.q1.ans_type !== 'num') crits.unshift('fix_correct');
+    if (crits.length) {
+      h += '<div class="g-rub">' + crits.map(function (c) {
+        var v = g.scores[c]; var a = ai && ai.criteria && ai.criteria[c];
+        return '<label class="g-rrow2">' +
+          '<input type="checkbox" data-crit="' + esc(c) + '" data-q="' + esc(qid) + '"' + (v ? ' checked' : '') + '>' +
+          '<span class="g-rlabel">' + esc(labels[c] || c) + '</span>' +
+          (a ? '<span class="g-aihint ' + (a.met ? 'yes' : 'no') + '" title="' + esc(a.evidence || '') + '">AI: ' + (a.met ? '✓' : '✗') +
+               (a.evidence ? ' «' + esc(a.evidence.slice(0, 60)) + '»' : '') + '</span>' : '') +
+          '</label>';
+      }).join('') + '</div>';
+    }
+    if (ai && ai.conclusion) h += '<div class="g-aiconc' + (ai.demo ? ' demo' : '') + '">' + (ai.demo ? 'הדגמה · ' : 'AI · ') + esc(ai.conclusion) + '</div>';
+    h += '<textarea class="g-comment" data-q="' + esc(qid) + '" placeholder="הערת בודק (תופיע בסיכום למאנדיי)">' + esc(g.comment || '') + '</textarea>' +
+      '</div>';
+    return h;
+  }
+
+  function scoreBarHtml() {
+    var d = S.card, sc = d.score; if (!sc) return '';
+    var missing = Object.keys(sc.questions).filter(function (q) { return sc.questions[q].complete === false; }).length;
+    var m = d.monday || {};
+    return '<div class="g-scorebar">' +
+      '<div class="g-total"><span>ציון</span><b id="g-total">' + sc.total + '</b><span>/ ' + sc.max + '</span>' +
+        '<span class="g-miss" id="g-miss">' + (sc.complete ? 'הבדיקה הושלמה' : ('חסר סימון ב-' + missing + ' שאלות')) + '</span></div>' +
+      '<div class="g-act">' +
+        '<button class="g-btn" id="g-ai" title="ממלא הצעה לכל שורה ברובריקה. מה שסימנת בעצמך לא משתנה.">' + (d.ai_available ? 'בדוק עם AI' : 'בדוק עם AI (הדגמה)') + '</button>' +
+        (m.fixed_board
+          ? '<button class="g-btn rev" id="g-monday-quick" title="מוצא את השורה של המועמד בבורד לפי שם ומעדכן את העמודות «ציון מבחן» ו«הערכה מילולית»">' +
+              (m.item_id ? 'עדכן במאנדיי' : 'שלח למאנדיי') + ' · ' + esc(m.fixed_board_name || ('בורד ' + m.fixed_board)) + '</button>' +
+            '<button class="g-btn" id="g-monday">שנה בורד / מיפוי</button>'
+          : '<button class="g-btn rev" id="g-monday">' + (m.item_id ? 'עדכן במאנדיי' : 'שלח למאנדיי') + '</button>') +
+        (m.item_id ? '<span class="g-pill good" title="פריט ' + esc(m.item_id) + '">נשלח · ' + esc(m.item_name || ('פריט ' + m.item_id)) + '</span>' : '') +
+      '</div>' +
+      '<div id="g-mpick" hidden></div>' +
+      '<div id="g-mpanel" hidden></div>' +
+      '<div class="g-note" id="g-msg" style="margin:6px 0 0"></div>' +
+    '</div>';
+  }
+
+  function eventsHtml() {
+    var ev = (S.card && S.card.events) || [];
+    if (!ev.length) return '';
+    var names = { login: 'כניסה', start: 'התחלה', submit: 'הגשה', admin: 'מנהל', grade: 'סימון בודק', ai_grade: 'בדיקת AI', monday: 'מאנדיי', question: 'שאלה' };
+    return '<div class="g-qblock"><div class="g-qhead"><span class="qid">יומן</span><span class="qname">מה קרה ומתי</span></div>' +
+      '<div class="g-qbody"><div class="g-events">' + ev.map(function (e) {
+        var d = new Date(e.at); var hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+        return '<div class="g-ev"><span class="g-evt">' + dd + ' ' + hh + '</span><span class="g-evk">' + esc(names[e.kind] || e.kind) + '</span><span>' + esc(e.detail || '') + '</span></div>';
+      }).join('') + '</div></div></div>';
+  }
+
+  function mountGrading() {
+    var d = S.card; if (!d || !d.score) return;
+    var reopened = d.reopened || [];
+    Array.prototype.forEach.call(document.querySelectorAll('.g-qblock[data-q]'), function (blk) {
+      var qid = blk.getAttribute('data-q'); var body = blk.querySelector('.g-qbody'); var head = blk.querySelector('.g-qhead');
+      if (head && !head.querySelector('[data-reopen]')) {
+        head.insertAdjacentHTML('beforeend', reopened.indexOf(qid) >= 0
+          ? '<span class="g-pill mid" style="margin-inline-start:8px">פתוחה לעריכה</span>'
+          : '<button class="g-btn" data-reopen="' + esc(qid) + '" style="margin-inline-start:8px" title="המועמד יוכל לערוך את השאלה הזו שוב. אם המבחן הוגש — הוא נפתח מחדש עם 5 דק׳.">פתח שאלה מחדש</button>');
+      }
+      if (body && !blk.querySelector('.g-grade')) body.insertAdjacentHTML('beforeend', gradingHtml(qid));
+    });
+    var cardBody = document.querySelector('.g-card-body');
+    if (cardBody && !document.querySelector('.g-events')) cardBody.insertAdjacentHTML('beforeend', eventsHtml());
+    Array.prototype.forEach.call(document.querySelectorAll('[data-reopen]'), function (b) {
+      b.onclick = function () {
+        if (!confirm('לפתוח את השאלה הזו מחדש לעריכה אצל המועמד?')) return;
+        api('/api/examiner/teach/reopen', { code: S.open, qid: b.getAttribute('data-reopen') }).then(function () { openCard(S.open); }).catch(function (e) { alert(e.message); });
+      };
+    });
+    var top = document.querySelector('.g-card-body');
+    if (top && !document.querySelector('.g-scorebar')) top.insertAdjacentHTML('afterbegin', scoreBarHtml());
+    wireGrading();
+  }
+
+  function collect(qid) {
+    var scores = {};
+    Array.prototype.forEach.call(document.querySelectorAll('input[data-crit][data-q="' + qid + '"]'), function (cb) {
+      scores[cb.getAttribute('data-crit')] = cb.checked ? 1 : 0;
+    });
+    var ta = document.querySelector('textarea.g-comment[data-q="' + qid + '"]');
+    return { scores: scores, comment: ta ? ta.value : '' };
+  }
+  function pushGrade(qid) {
+    var body = collect(qid);
+    api('/api/examiner/teach/grade', { code: S.open, qid: qid, scores: body.scores, comment: body.comment })
+      .then(function (r) { S.card.score = r.score; S.card.grades = r.grades; paintScores(); })
+      .catch(function (e) { msg(e.message, true); });
+  }
+  function paintScores() {
+    var sc = S.card.score; if (!sc) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.g-qpts'), function (el) {
+      var q = sc.questions[el.getAttribute('data-pts')]; if (q) el.textContent = q.points + ' / ' + q.max;
+    });
+    var t = document.getElementById('g-total'); if (t) t.textContent = sc.total;
+    var missing = Object.keys(sc.questions).filter(function (q) { return sc.questions[q].complete === false; }).length;
+    var mm = document.getElementById('g-miss'); if (mm) mm.textContent = sc.complete ? 'הבדיקה הושלמה' : ('חסר סימון ב-' + missing + ' שאלות');
+  }
+  function msg(t, bad) { var m = document.getElementById('g-msg'); if (m) { m.textContent = t || ''; m.style.color = bad ? 'var(--danger)' : 'var(--muted)'; } }
+
+  function wireGrading() {
+    Array.prototype.forEach.call(document.querySelectorAll('input[data-crit]'), function (cb) {
+      cb.onchange = function () { pushGrade(cb.getAttribute('data-q')); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('textarea.g-comment'), function (ta) {
+      ta.oninput = function () {
+        var q = ta.getAttribute('data-q'); if (saveT[q]) clearTimeout(saveT[q]);
+        saveT[q] = setTimeout(function () { pushGrade(q); }, 800);
+      };
+    });
+    var ai = document.getElementById('g-ai');
+    if (ai) ai.onclick = function () {
+      ai.disabled = true; msg('ה-AI בודק… (כ-10–40 שניות)');
+      api('/api/examiner/teach/ai-grade', { code: S.open }).then(function (r) {
+        var t = r.demo ? 'רץ במצב הדגמה — אין מפתח API בשרת. הסימונים לפי אורך בלבד.' : 'ה-AI סיים. הסימונים שלו מופיעים ליד כל שורה; מה שסימנת בעצמך נשאר.';
+        openCard(S.open, function () { msg(t); });
+      }).catch(function (e) { msg(e.message, true); ai.disabled = false; });
+    };
+    var mb = document.getElementById('g-monday');
+    if (mb) mb.onclick = function () { toggleMonday(); };
+    var mq = document.getElementById('g-monday-quick');
+    if (mq) mq.onclick = function () {
+      var m = S.card.monday;
+      sendMonday({ code: S.open, board_id: m.fixed_board, board_name: m.fixed_board_name }, mq);
+    };
+  }
+
+  // ---------- מאנדיי: שליחה + בחירת שורה כשאין שם זהה ----------
+  function sendMonday(body, btn) {
+    if (btn) btn.disabled = true;
+    var pick = document.getElementById('g-mpick'); if (pick) { pick.hidden = true; pick.innerHTML = ''; }
+    msg('שולח למאנדיי…');
+    api('/api/examiner/teach/monday/send', body).then(function (r) {
+      var t = (r.created ? 'נוצרה שורה חדשה «' : 'עודכנה השורה «') + (r.item_name || r.item_id) + '» בבורד «' + (r.board_name || '') + '» · ' + r.sent + ' עמודות.';
+      openCard(S.open, function () { msg(t); });
+    }).catch(function (e) {
+      if (btn) btn.disabled = false;
+      if (e.status === 409 && e.data && e.data.needs_pick) return showPick(e.data, body);
+      msg(e.message, true);
+    });
+  }
+  function showPick(d, body) {
+    var pick = document.getElementById('g-mpick'); if (!pick) return msg(d.error, true);
+    msg('');
+    var sugg = d.suggestions || [];
+    pick.hidden = false;
+    pick.innerHTML = '<div class="g-pick">' +
+      '<div class="g-pick-h">' + esc(d.error) + '</div>' +
+      (sugg.length ? '<div class="g-pick-list">' + sugg.map(function (s) {
+        return '<button class="g-btn" data-pick="' + esc(s.id) + '" data-name="' + esc(s.name) + '" title="' + esc(s.reason || '') + '">' +
+          esc(s.name) + ' <span class="g-pick-why">' + esc(s.reason || '') + '</span></button>';
+      }).join('') + '</div>' : '') +
+      '<div class="g-pick-foot">' +
+        '<button class="g-btn" id="g-pick-new">צור שורה חדשה בשם «' + esc(d.candidate) + '»</button>' +
+        '<button class="g-btn ghost" id="g-pick-cancel">בטל</button>' +
+      '</div></div>';
+    Array.prototype.forEach.call(pick.querySelectorAll('[data-pick]'), function (b) {
+      b.onclick = function () {
+        if (!confirm('לעדכן את השורה «' + b.getAttribute('data-name') + '» בציון של ' + d.candidate + '?')) return;
+        sendMonday(Object.assign({}, body, { item_id: b.getAttribute('data-pick'), item_name: b.getAttribute('data-name') }), null);
+      };
+    });
+    var nb = document.getElementById('g-pick-new');
+    if (nb) nb.onclick = function () { sendMonday(Object.assign({}, body, { create_new: true }), nb); };
+    var cb = document.getElementById('g-pick-cancel');
+    if (cb) cb.onclick = function () { pick.hidden = true; pick.innerHTML = ''; };
+  }
+
+  // ---------- מאנדיי: בחירת בורד ומיפוי עמודות ----------
+  var M = { boards: null, cols: null, setup: null };
+  function guessCol(fieldId, cols) {
+    var pats = {
+      first: /שם פרטי|first/i, last: /שם משפחה|last|משפחה/i,
+      phone: /טלפון|phone|נייד|mobile/i, subject: /מקצוע|subject/i, total: /ציון מבחן|^ציון$|ציון \(|score|total|נקודות/i,
+      percent: /אחוז|percent|%/i, date: /תאריך|date/i, verbal: /הערכה מילולית|מילולי|verbal/i,
+      summary: /סיכום|הערות|notes|summary|comment|משוב/i
+    };
+    var re = pats[fieldId]; if (!re) return '';
+    var byType = { percent: 'numbers', date: 'date', summary: 'long_text' };
+    var c = cols.filter(function (x) { return re.test(x.title) && (!byType[fieldId] || x.type === byType[fieldId] || x.type === 'text'); })[0];
+    return c ? c.id : '';
+  }
+  function toggleMonday() {
+    var p = document.getElementById('g-mpanel'); if (!p) return;
+    if (!p.hidden) { p.hidden = true; return; }
+    p.hidden = false; p.innerHTML = '<div class="g-note">טוען בורדים…</div>';
+    Promise.all([ api('/api/examiner/monday/boards'), api('/api/examiner/teach/monday/setup') ]).then(function (rs) {
+      M.boards = rs[0].boards || []; M.setup = rs[1];
+      if (!M.setup.has_token) { p.innerHTML = '<div class="g-note" style="color:var(--danger)">אין טוקן של מאנדיי בשרת (MONDAY_API_TOKEN).</div>'; return; }
+      var cur = (S.card.monday && S.card.monday.board_id) || M.setup.board_id || (M.boards[0] && M.boards[0].id);
+      p.innerHTML = '<div class="g-mrow"><label>בורד</label><select id="g-board">' + M.boards.map(function (b) {
+        return '<option value="' + esc(b.id) + '"' + (String(b.id) === String(cur) ? ' selected' : '') + '>' + esc(b.name) + ' (' + b.items + ')</option>';
+      }).join('') + '</select></div><div id="g-map"><div class="g-note">טוען עמודות…</div></div>';
+      document.getElementById('g-board').onchange = loadCols; loadCols();
+    }).catch(function (e) { p.innerHTML = '<div class="g-note" style="color:var(--danger)">' + esc(e.message) + '</div>'; });
+  }
+  function loadCols() {
+    var board = document.getElementById('g-board').value; var map = document.getElementById('g-map');
+    map.innerHTML = '<div class="g-note">טוען עמודות…</div>';
+    Promise.all([ api('/api/examiner/monday/board/' + encodeURIComponent(board)), api('/api/examiner/teach/monday/setup') ]).then(function (rs) {
+      var cols = rs[0].columns || []; var saved = (rs[1].board_id === board && rs[1].mapping) ? rs[1].mapping : null;
+      // date נכתב גם לעמודת date
+      M.cols = cols;
+      map.innerHTML = M.setup.fields.map(function (f) {
+        var sel = saved ? (saved[f.id] || '') : guessCol(f.id, cols);
+        return '<div class="g-mrow"><label>' + esc(f.label) + '</label><select data-f="' + esc(f.id) + '"><option value="">— לא לשלוח —</option>' +
+          cols.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.title) + ' · ' + esc(c.type) + '</option>'; }).join('') +
+          '</select></div>';
+      }).join('') +
+      '<div class="g-note">השורה נמצאת לפי שם המועמד (אם אין שם זהה — תתבקש לבחור). נשלח רק מה שמופה; עמודה שלא מופתה לא נגעת.</div>' +
+      '<button class="g-btn rev" id="g-msend">' + ((S.card.monday && S.card.monday.item_id) ? 'עדכן את הפריט' : 'צור פריט ושלח') + '</button>';
+      document.getElementById('g-msend').onclick = function () {
+        var mapping = {}; Array.prototype.forEach.call(map.querySelectorAll('select[data-f]'), function (s) { if (s.value) mapping[s.getAttribute('data-f')] = s.value; });
+        if (!Object.keys(mapping).length) { msg('לא מופתה אף עמודה.', true); return; }
+        var bname = (M.boards.filter(function (x) { return String(x.id) === String(board); })[0] || {}).name || '';
+        sendMonday({ code: S.open, board_id: board, board_name: bname, mapping: mapping }, this);
+      };
+    }).catch(function (e) { map.innerHTML = '<div class="g-note" style="color:var(--danger)">' + esc(e.message) + '</div>'; });
   }
 
   // ------------------------------------------------------------- מפתח הבדיקה
@@ -476,6 +733,7 @@
     if (S.open) {
       var b = document.getElementById('g-back');
       if (b) b.onclick = function () { S.open = null; S.card = null; render(); };
+      mountGrading();
     } else if (S.tab === 'people') wirePeople();
     else wireKey();
   }

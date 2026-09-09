@@ -179,3 +179,40 @@
 .g-rrow { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.6; color: var(--muted); }
 .g-syll { font-size: 13px; color: var(--muted); margin: 0 0 16px; padding: 8px 12px; border-radius: 8px; background: rgba(10,18,46,.4); border: 1px dashed var(--border); line-height: 1.6; }
 .g-syll span { font-weight: 700; color: var(--accent-1); }
+
+/* ---------- בדיקה: רובריקה, AI, ציון, מאנדיי ---------- */
+.g-scorebar { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; margin-bottom: 16px; border-radius: 12px; background: rgba(35,179,164,.08); border: 1px solid var(--border-strong); }
+.g-total { display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
+.g-total b { font-size: 28px; font-family: var(--mono); color: var(--accent-1); }
+.g-miss { margin-inline-start: 12px; font-size: 13px; color: var(--muted); }
+.g-grade { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: rgba(35,179,164,.06); border: 1px dashed var(--border-strong); }
+.g-grade-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--accent-1); margin-bottom: 8px; }
+.g-grade-h b { font-family: var(--mono); font-size: 15px; color: var(--text); }
+.g-autos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.g-rub { display: grid; gap: 6px; }
+.g-rrow2 { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; font-size: 14.5px; line-height: 1.55; cursor: pointer; }
+.g-rrow2 input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent-1); cursor: pointer; }
+.g-aihint { font-size: 12px; font-family: var(--mono); padding: 2px 8px; border-radius: 6px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.g-aihint.yes { background: rgba(69,184,78,.16); color: #9be0a3; }
+.g-aihint.no  { background: rgba(251,92,107,.14); color: #f0a5a4; }
+.g-aiconc { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.6; padding-right: 10px; border-right: 2px solid var(--border-strong); }
+.g-aiconc.demo { border-right-color: var(--warn); }
+.g-comment { width: 100%; min-height: 56px; margin-top: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(10,18,46,.6); color: var(--text); font-family: var(--sans); font-size: 14px; resize: vertical; }
+.g-comment:focus { outline: none; border-color: var(--accent-1); }
+.g-mrow { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+.g-mrow select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(10,18,46,.6); color: var(--text); font-size: 14px; }
+#g-mpanel { padding: 10px 12px; border-radius: 10px; background: rgba(10,18,46,.4); border: 1px solid var(--border); }
+
+/* ---------- יומן אירועים ---------- */
+.g-events { display: grid; gap: 4px; }
+.g-ev { display: grid; grid-template-columns: 92px 100px 1fr; gap: 10px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+.g-evt { font-family: var(--mono); direction: ltr; text-align: right; color: var(--faint); }
+.g-evk { font-weight: 700; color: var(--text); }
+
+/* ---------- מאנדיי: בחירת שורה ---------- */
+.g-pick { margin: 10px 0 0; padding: 12px 14px; border: 1px solid rgba(247,183,49,.45); border-radius: 10px; background: rgba(247,183,49,.08); }
+.g-pick-h { font-size: 14px; color: var(--text); margin-bottom: 8px; line-height: 1.6; }
+.g-pick-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.g-pick-list .g-btn { text-align: right; }
+.g-pick-why { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.g-pick-foot { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -82,10 +82,13 @@
   function sync() {
     return api('/api/teach/state').then(function (st) {
       var wasRunning = S.state && S.state.status === 'running';
+      var prevReopen = JSON.stringify((S.state && S.state.reopened) || []);
       S.state = st;
       S.remaining = st.remaining_sec;
       S.tickAt = Date.now();
       if (st.status !== 'running' && wasRunning) { stopClock(); draw(); }
+      else if (st.status === 'running' && !wasRunning) { applyState(st); qEnteredAt = Date.now(); draw(); }   // נפתח מחדש אחרי הגשה
+      else if (JSON.stringify(st.reopened || []) !== prevReopen) draw();
       else paintClock();
     }).catch(function () { /* רשת נפלה — הספירה המקומית ממשיכה */ });
   }
@@ -95,11 +98,13 @@
     var s = document.getElementById('t-saving');
     if (s) s.textContent = on ? 'שומר…' : '';
   }
-  function saveNow(qid) {
+  function saveNow(qid, reached) {
     if (!qid || !S.state || S.state.status !== 'running') return Promise.resolve();
     var spent = (S.spent[qid] || 0) + Math.round((Date.now() - qEnteredAt) / 1000);
     markSaving(true);
-    return api('/api/teach/answer', { qid: qid, value: S.answers[qid] || null, time_spent_sec: spent })
+    var body = { qid: qid, value: S.answers[qid] || null, time_spent_sec: spent };
+    if (reached !== undefined) body.reached = reached;        // «הבא» נלחץ — השרת זוכר עד איפה הגענו
+    return api('/api/teach/answer', body)
       .then(function (r) { S.remaining = r.remaining_sec; S.tickAt = Date.now(); })
       .catch(function () { })
       .then(function () { markSaving(false); });
@@ -115,11 +120,25 @@
     for (var k = 0; k < (qcount || 0); k++) {
       segs += '<div class="t-seg' + (k === S.i ? ' now' : k < S.reached ? ' done' : '') + '"></div>';
     }
+    var reopened = (S.state && S.state.reopened) || [];
+    var banner = '';
+    if (reopened.length) {
+      var qs = questions(); var cur = qs[S.i] && qs[S.i].id;
+      var others = reopened.filter(function (id) {
+        var k = qs.findIndex(function (x) { return x.id === id; });
+        return id !== cur && k >= 0 && k < S.reached;      // רק שאלות שכבר ננעלו
+      });
+      if (others.length) {
+        banner = '<div class="t-banner">המנהל פתח לך מחדש לעריכה: ' +
+          others.map(function (id) { var k = qs.findIndex(function (x) { return x.id === id; });
+            return '<button class="t-ghost small" data-jump="' + k + '">שאלה ' + (k + 1) + '</button>'; }).join(' ') + '</div>';
+      }
+    }
     return '<div class="t-bar">' +
              '<div class="t-brand">עתיד פלוס <span>· בוחן הוראה</span></div>' +
              '<div class="t-segs">' + segs + '</div>' +
              '<div class="t-clock" id="t-clock">' + fmt(S.remaining) + '</div>' +
-           '</div>' +
+           '</div>' + banner +
            '<div class="t-screen">' + inner + '</div>';
   }
 
@@ -172,8 +191,32 @@
     });
   }
 
+  // ---------------------------------------------------------------- הוראות
+  function drawInstructions() {
+    var ins = S.state.instructions || {};
+    function li(arr) { return (arr || []).map(function (t) { return '<li>' + esc(t) + '</li>'; }).join(''); }
+    root.innerHTML =
+      '<div class="t-bar"><div class="t-brand">עתיד פלוס <span>· בוחן הוראה</span></div>' +
+      '<div class="t-clock">' + fmt(S.state.duration_sec) + '</div></div>' +
+      '<div class="t-screen">' +
+        '<h2 class="t-ins-h">' + esc(ins.title || 'הוראות המבחן') + '</h2>' +
+        '<p class="t-brief">' + esc(ins.intro || '') + '</p>' +
+        '<div class="t-ins-grid">' +
+          '<div class="t-ins ok"><div class="t-cap">מותר</div><ul>' + li(ins.allowed) + '</ul></div>' +
+          '<div class="t-ins no"><div class="t-cap">אסור</div><ul>' + li(ins.forbidden) + '</ul></div>' +
+        '</div>' +
+        '<div class="t-cap" style="margin-top:14px">איך המבחן עובד</div><ul class="t-ins-rules">' + li(ins.rules) + '</ul>' +
+        '<label class="t-ack"><input type="checkbox" id="t-ack"> <span>' + esc(ins.ack || 'קראתי ואני מאשר.') + '</span></label>' +
+        '<div class="t-foot"><div class="t-hint">אחרי האישור תבחר מקצוע. השעון מתחיל רק בלחיצה על «התחל».</div>' +
+        '<div class="t-btns"><button class="t-go" id="t-next" disabled>המשך לבחירת מקצוע</button></div></div>' +
+      '</div>';
+    var cb = document.getElementById('t-ack'), nx = document.getElementById('t-next');
+    if (cb && nx) { cb.onchange = function () { nx.disabled = !cb.checked; }; nx.onclick = function () { S.ack = true; drawChoose(); }; }
+  }
+
   // ---------------------------------------------------------------- בחירת מקצוע
   function drawChoose() {
+    if (!S.ack) return drawInstructions();
     var subs = (S.state.subjects || []);
     var chips = subs.map(function (s) {
       return '<button class="t-subj' + (S.subject === s.id ? ' sel' : '') + '" data-s="' + esc(s.id) + '">' + esc(s.name) + '</button>';
@@ -205,7 +248,7 @@
         b.classList.add('sel');
         S.subject = b.getAttribute('data-s');
         var s = subs.filter(function (x) { return x.id === S.subject; })[0];
-        note.textContent = s ? s.exam + ' · ' + s.topic : '';
+        note.innerHTML = s ? (esc(s.exam + ' · ' + s.topic) + (s.aids ? '<span class="t-aids"><b>חומר עזר מותר:</b> ' + esc(s.aids) + '</span>' : '')) : '';
         next.disabled = false;
       };
     });
@@ -270,7 +313,8 @@
     var qs = questions();
     var q = qs[S.i];
     if (!q) { S.i = 0; q = qs[0]; }
-    var ro = S.i < S.reached;
+    var reopened = (S.state.reopened || []);
+    var ro = S.i < S.reached && reopened.indexOf(q.id) < 0;
     var a = S.answers[q.id] || {};
     var last = (S.i === qs.length - 1);
     var body = '';
@@ -433,6 +477,9 @@
 
   // ---------------------------------------------------------------- ניווט
   function wireNav(q, ro, last) {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-jump]'), function (b) {
+      b.onclick = function () { S.i = Number(b.getAttribute('data-jump')); qEnteredAt = Date.now(); draw(); };
+    });
     var back = document.getElementById('t-back');
     var next = document.getElementById('t-next');
     if (back) back.onclick = function () {
@@ -445,7 +492,7 @@
       S.spent[q.id] = (S.spent[q.id] || 0) + Math.round((Date.now() - qEnteredAt) / 1000);
       qEnteredAt = Date.now();
       next.disabled = true;
-      saveNow(q.id).then(function () {
+      saveNow(q.id, last ? undefined : Math.max(S.reached, S.i + 1)).then(function () {
         if (last) return api('/api/teach/submit', {}).then(function (st) { stopClock(); applyState(st); draw(); });
         S.i += 1; S.reached = Math.max(S.reached, S.i);
         draw();
@@ -456,6 +503,7 @@
   // ---------------------------------------------------------------- סיום
   function drawDone() {
     stopClock();
+    if (!poller) poller = setInterval(sync, 15000);   // אם המנהל יפתח מחדש — נחזור למבחן
     root.innerHTML =
       '<div class="t-bar"><div class="t-brand">עתיד פלוס <span>· בוחן הוראה</span></div></div>' +
       '<div class="t-screen"><div class="t-center">' +
@@ -463,7 +511,6 @@
         '<p>תודה ' + esc(S.state.name) + '. התשובות נשמרו, ונחזור אליך בימים הקרובים.</p>' +
         '<p>אפשר לסגור את החלון.</p>' +
       '</div></div>';
-    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { }
   }
 
   // ---------------------------------------------------------------- אתחול
@@ -477,11 +524,12 @@
         S.answers[qid] = st.answers[qid].value || {};
         S.spent[qid] = st.answers[qid].time_spent_sec || 0;
       });
-      // מרענן באמצע מבחן — ממשיכים מהשאלה האחרונה שנענתה
+      // מרענן באמצע מבחן — ממשיכים מהשאלה הרחוקה ביותר שהגענו אליה (השרת זוכר),
+      // כך ששאלה שכבר עברנו ממנה נשארת נעולה גם אחרי רענון.
       var qs = (st.exam && st.exam.questions) || [];
       var lastAnswered = -1;
       qs.forEach(function (q, k) { if (st.answers[q.id]) lastAnswered = k; });
-      if (S.i < 0) { S.i = Math.min(qs.length - 1, Math.max(0, lastAnswered)); S.reached = S.i; }
+      if (S.i < 0) { S.reached = Math.min(qs.length - 1, Math.max(0, st.reached || 0, lastAnswered)); S.i = S.reached; }
     }
     if (st.status === 'running' && !timer) startClock();
   }
@@ -507,7 +555,6 @@
     }
     try { S.token = localStorage.getItem(TOKEN_KEY); } catch (e) { }
   })();
-  if (false) try { S.token = localStorage.getItem(TOKEN_KEY); } catch (e) { }
   if (S.token) {
     api('/api/teach/state').then(function (st) { applyState(st); qEnteredAt = Date.now(); draw(); })
       .catch(function () { S.token = null; try { localStorage.removeItem(TOKEN_KEY); } catch (e) { } drawLogin(); });
